@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>TypeQuest</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="popup-header">
+    <div class="brand">
+      <span class="brand-mark">◈</span>
+      <span class="brand-name">TypeQuest</span>
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" id="open-dashboard" title="Open dashboard">↗</button>
+    </div>
+  </header>
+
+  <main id="popup-main">
+    <!-- Signed-out state -->
+    <section id="signed-out-state" class="hidden">
+      <div class="signin-prompt">
+        <p>Sign in to start tracking your writing journey.</p>
+        <button class="primary-btn" id="signin-btn">Sign in with Google</button>
+      </div>
+    </section>
+
+    <!-- Signed-in state -->
+    <section id="signed-in-state">
+      <div class="level-block">
+        <div class="level-ring">
+          <svg viewBox="0 0 80 80" width="80" height="80">
+            <circle cx="40" cy="40" r="34" stroke="#2A3556" stroke-width="6" fill="none"/>
+            <circle id="ring-progress" cx="40" cy="40" r="34"
+                    stroke="#F5B342" stroke-width="6" fill="none"
+                    stroke-linecap="round"
+                    stroke-dasharray="213.6" stroke-dashoffset="213.6"
+                    transform="rotate(-90 40 40)"/>
+          </svg>
+          <span class="level-num" id="level-num">—</span>
+        </div>
+        <div class="level-info">
+          <h2 id="level-title">Loading…</h2>
+          <p class="level-xp"><span id="xp-current">—</span> / <span id="xp-target">—</span> XP</p>
+          <div class="xp-bar">
+            <div class="xp-bar-fill" id="xp-bar-fill"></div>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="section-label">Today</h3>
+      <div class="stat-row">
+        <div class="stat">
+          <div class="stat-value" id="stat-words">0</div>
+          <div class="stat-label">Words</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="stat-time">0m</div>
+          <div class="stat-label">Active</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="stat-wpm">0</div>
+          <div class="stat-label">WPM</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value streak" id="stat-streak">🔥 0</div>
+          <div class="stat-label">Streak</div>
+        </div>
+      </div>
+
+      <h3 class="section-label">Recent badges</h3>
+      <div class="badge-strip" id="badge-strip">
+        <div class="empty">No badges yet — start typing!</div>
+      </div>
+
+      <button class="primary-btn full" id="view-dashboard-btn">Open full dashboard →</button>
+    </section>
+  </main>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
