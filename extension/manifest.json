@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "TypeQuest — Gamify Your Writing",
+  "version": "0.1.0",
+  "description": "Track typing across Google Docs, Word, and Notion. Level up, earn badges, see your craft evolve.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://docs.google.com/*",
+    "https://word.office.com/*",
+    "https://word-edit.officeapps.live.com/*",
+    "https://www.notion.so/*",
+    "http://localhost:4000/*",
+    "https://api.typequest.app/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://docs.google.com/document/*",
+        "https://word.office.com/*",
+        "https://word-edit.officeapps.live.com/*",
+        "https://www.notion.so/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "TypeQuest",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["hud.css", "hud.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
