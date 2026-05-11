@@ -89,7 +89,8 @@ els.openDashboard.addEventListener("click", () => {
 });
 
 els.signInBtn.addEventListener("click", () => {
-  chrome.tabs.create({ url: `${CONFIG.DASHBOARD_URL}/signin?source=extension` });
+  const extId = chrome.runtime.id;
+  chrome.tabs.create({ url: `${CONFIG.DASHBOARD_URL}/signin?source=extension&extid=${extId}` });
 });
 
 // ──── Bootstrap ────

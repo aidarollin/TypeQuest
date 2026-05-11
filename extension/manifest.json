@@ -47,10 +47,11 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "web_accessible_resources": [
-    {
-      "resources": ["hud.css", "hud.js"],
-      "matches": ["<all_urls>"]
-    }
-  ]
+  "web_accessible_resources": [],
+  "externally_connectable": {
+    "matches": [
+      "http://localhost:5173/*",
+      "https://app.typequest.app/*"
+    ]
+  }
 }

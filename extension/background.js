@@ -49,6 +49,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     api.clearToken().then(() => sendResponse({ ok: true }));
     return true;
   }
+
+});
+
+// Messages from externally_connectable pages (the dashboard)
+chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
+  if (msg.type === "SET_TOKEN") {
+    api.setToken(msg.token)
+      .then(() => api.getOverview())
+      .then((stats) => {
+        lastStats = stats;
+        sendResponse({ ok: true });
+      })
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
 });
 
 async function handleTypingEvent(event) {
