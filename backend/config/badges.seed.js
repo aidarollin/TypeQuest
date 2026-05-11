@@ -51,8 +51,8 @@ const BADGES = [
   { code: "CONFIDENT_500", name: "Surgical",         description: "Type 500 words with no backspace.", icon: "🎖️", tier: "gold",    category: "fun",         rule: { type: "noBackspace", words: 500 },  xpReward: 750 }
 ];
 
-async function run() {
-  await connectDB();
+// Exported for use in server.js startup (does not disconnect)
+export async function seedBadges() {
   let inserted = 0;
   let updated = 0;
   for (const def of BADGES) {
@@ -64,11 +64,13 @@ async function run() {
     if (result.upsertedCount) inserted++;
     else updated++;
   }
-  console.log(`✅ Badges seed complete. Inserted: ${inserted}, Updated: ${updated}, Total: ${BADGES.length}`);
-  await mongoose.disconnect();
+  console.log(`✅ Badges: ${inserted} inserted, ${updated} up-to-date`);
 }
 
-run().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+// CLI runner: node config/badges.seed.js
+const isMain = process.argv[1]?.endsWith("badges.seed.js");
+if (isMain) {
+  await connectDB();
+  await seedBadges();
+  await mongoose.disconnect();
+}

@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: typequest
+    runtime: node
+    # Build: compile the dashboard first, then install backend deps
+    buildCommand: >
+      npm install --prefix dashboard &&
+      npm run build --prefix dashboard &&
+      npm install --prefix backend
+    startCommand: node backend/server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Auto-generated — no action needed
+      - key: JWT_SECRET
+        generateValue: true
+      # Fill these in the Render dashboard after connecting your repo
+      - key: MONGODB_URI
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      # Same value as GOOGLE_CLIENT_ID — needed at dashboard build time
+      - key: VITE_GOOGLE_CLIENT_ID
+        sync: false
+      # Add chrome-extension://YOUR_ID here after loading the extension
+      - key: CORS_ORIGINS
+        sync: false
