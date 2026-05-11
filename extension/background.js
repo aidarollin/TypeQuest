@@ -50,6 +50,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+});
+
+// Messages from externally_connectable pages (the dashboard)
+chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
   if (msg.type === "SET_TOKEN") {
     api.setToken(msg.token)
       .then(() => api.getOverview())

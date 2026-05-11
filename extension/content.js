@@ -126,21 +126,32 @@
 
   // ──────── Find the editable region ────────
   function attachListener() {
-    // Strategy: listen on document.body with capture: true. Filters by editable target.
+    // Google Docs uses a hidden contenteditable div for input; the target may not
+    // pass a simple isContentEditable check. Since content.js only runs on known
+    // writing apps, accept all input events and filter only obvious non-editor targets.
+    const isKnownWritingApp = appName !== "unknown";
+
     document.addEventListener(
       "input",
       (event) => {
         const target = event.target;
-        const isEditable =
-          target?.isContentEditable ||
-          target?.tagName === "TEXTAREA" ||
-          (target?.tagName === "INPUT" && /^(text|search)$/i.test(target.type));
-        if (!isEditable) return;
+        const tagName = target?.tagName;
 
-        // event.inputType and event.data are available on InputEvent
+        if (isKnownWritingApp) {
+          // On known writing apps, skip only form inputs that are clearly not the editor
+          if (tagName === "SELECT" || tagName === "BUTTON") return;
+          if (tagName === "INPUT" && !/^(text|search)$/i.test(target.type || "")) return;
+        } else {
+          const isEditable =
+            target?.isContentEditable ||
+            tagName === "TEXTAREA" ||
+            (tagName === "INPUT" && /^(text|search)$/i.test(target.type || ""));
+          if (!isEditable) return;
+        }
+
         recordEvent(event.inputType, event.data);
       },
-      true // capture phase, so we see events before page handlers cancel
+      true
     );
   }
 
