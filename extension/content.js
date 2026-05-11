@@ -6,9 +6,6 @@
 // event metadata (inputType, data length).
 
 (() => {
-  // The content script is plain JS (not a module) per Manifest V3 limits.
-  // We inline a minimal tracker here mirroring lib/tracker.js semantics.
-
   const IDLE_THRESHOLD_MS = 5000;
   const FLUSH_INTERVAL_MS = 30000;
   const FLUSH_WORD_THRESHOLD = 50;
@@ -33,8 +30,15 @@
     recentEvents: [],
     partialWordBuffer: "",
     clientEventCounter: 0,
-    sessionTotalWords: 0   // cumulative across flushes for local orb display
+    sessionTotalWords: 0
   };
+
+  // Last stats received from backend — merged with local counters for live display
+  let lastKnownStats = null;
+
+  // HUD element refs set after injection
+  let hudEls = null;
+  let panelAutoOpened = false;
 
   function recordEvent(inputType, data) {
     const now = Date.now();
@@ -56,7 +60,7 @@
         state.sessionTotalWords += completed;
         const lastSpace = state.partialWordBuffer.lastIndexOf(" ");
         state.partialWordBuffer = state.partialWordBuffer.slice(lastSpace + 1);
-        updateOrbCount(state.sessionTotalWords);
+        onWordCompleted();
       }
       state.recentEvents.push({ ts: now, charCount: text.length });
     } else if (
@@ -69,7 +73,8 @@
     const cutoff = now - WPM_WINDOW_MS;
     state.recentEvents = state.recentEvents.filter(e => e.ts >= cutoff);
 
-    // Trigger early flush if word threshold reached
+    updateHUDLive();
+
     if (state.deltaWords >= FLUSH_WORD_THRESHOLD) {
       flushAndSend("threshold");
     }
@@ -78,15 +83,50 @@
   function currentWpm() {
     if (state.recentEvents.length === 0) return 0;
     const totalChars = state.recentEvents.reduce((a, e) => a + e.charCount, 0);
-    const windowMin = WPM_WINDOW_MS / 60000;
-    return Math.round((totalChars / 5) / windowMin);
+    return Math.round((totalChars / 5) / (WPM_WINDOW_MS / 60000));
+  }
+
+  function onWordCompleted() {
+    if (!hudEls) return;
+
+    // Pulse the orb
+    hudEls.orb.textContent = state.sessionTotalWords;
+    hudEls.orb.classList.remove("pulse");
+    // Force reflow so animation restarts each time
+    void hudEls.orb.offsetWidth;
+    hudEls.orb.classList.add("pulse");
+
+    // Auto-open the panel on first word so the user sees stats immediately
+    if (!panelAutoOpened) {
+      panelAutoOpened = true;
+      hudEls.panel.classList.add("open");
+    }
+  }
+
+  // ──────── Live HUD update ────────
+  function updateHUDLive() {
+    if (!hudEls) return;
+    const wordsToday = (lastKnownStats?.wordsToday ?? 0) + state.sessionTotalWords;
+    const wpm = currentWpm();
+
+    setLiveValue(hudEls.today, `${wordsToday} words`);
+    setLiveValue(hudEls.wpm, wpm > 0 ? String(wpm) : "—");
+  }
+
+  // Bumps the element with a flash animation when the value changes
+  function setLiveValue(el, text) {
+    if (!el || el.textContent === text) return;
+    el.textContent = text;
+    el.classList.remove("bump");
+    void el.offsetWidth;
+    el.classList.add("bump");
   }
 
   function snapshotAndReset() {
     const snapshot = {
       clientEventId: `${state.sessionStartedAt}-${state.clientEventCounter++}`,
       app: appName,
-      url: location.hostname, // hostname only, no path/query
+      url: location.hostname,
       deltaChars: state.deltaChars,
       deltaWords: state.deltaWords,
       deltaBackspaces: state.deltaBackspaces,
@@ -113,7 +153,6 @@
     chrome.runtime.sendMessage(
       { type: "TYPING_EVENT", reason, payload: snapshot },
       (response) => {
-        // Background acks. Used for HUD live updates if it's mounted.
         if (response && response.stats) {
           window.postMessage(
             { source: "typequest", type: "STATS_UPDATE", stats: response.stats },
@@ -124,55 +163,83 @@
     );
   }
 
-  // ──────── Find the editable region ────────
-  function attachListener() {
-    // Google Docs uses a hidden contenteditable div for input; the target may not
-    // pass a simple isContentEditable check. Since content.js only runs on known
-    // writing apps, accept all input events and filter only obvious non-editor targets.
-    const isKnownWritingApp = appName !== "unknown";
-
-    document.addEventListener(
-      "input",
-      (event) => {
-        const target = event.target;
-        const tagName = target?.tagName;
-
-        if (isKnownWritingApp) {
-          // On known writing apps, skip only form inputs that are clearly not the editor
-          if (tagName === "SELECT" || tagName === "BUTTON") return;
-          if (tagName === "INPUT" && !/^(text|search)$/i.test(target.type || "")) return;
-        } else {
-          const isEditable =
-            target?.isContentEditable ||
-            tagName === "TEXTAREA" ||
-            (tagName === "INPUT" && /^(text|search)$/i.test(target.type || ""));
-          if (!isEditable) return;
-        }
-
-        recordEvent(event.inputType, event.data);
-      },
-      true
-    );
+  // ──────── Shared keydown handler ────────
+  function handleKeydown(e) {
+    if (e.isComposing) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const key = e.key;
+    if (key.length === 1) {
+      recordEvent("insertText", key);
+    } else if (key === "Enter") {
+      recordEvent("insertText", " ");
+    } else if (key === "Backspace" || key === "Delete") {
+      recordEvent("deleteContentBackward", null);
+    }
   }
 
-  // ──────── Periodic flush ────────
-  setInterval(() => flushAndSend("interval"), FLUSH_INTERVAL_MS);
+  // ──────── Attach to writing surfaces ────────
+  function attachListener() {
+    // Google Docs routes keystrokes through a hidden child iframe; those events
+    // don't bubble to the parent document. Attach directly to each iframe's doc.
+    const attachedFrames = new Set();
 
-  // Flush on tab hide / unload — last-ditch save
+    function tryAttachToFrame(iframe) {
+      if (attachedFrames.has(iframe)) return;
+      try {
+        const doc = iframe.contentDocument;
+        if (!doc) return;
+        doc.addEventListener("keydown", handleKeydown, true);
+        attachedFrames.add(iframe);
+        iframe.addEventListener("load", () => {
+          attachedFrames.delete(iframe);
+          tryAttachToFrame(iframe);
+        });
+      } catch (_) { /* cross-origin */ }
+    }
+
+    document.querySelectorAll("iframe").forEach(tryAttachToFrame);
+
+    new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          if (node.nodeName === "IFRAME") tryAttachToFrame(node);
+          if (node.querySelectorAll) node.querySelectorAll("iframe").forEach(tryAttachToFrame);
+        }
+      }
+    }).observe(document.documentElement, { childList: true, subtree: true });
+
+    // Fallback: standard contenteditable elements (Notion, Word Online)
+    document.addEventListener("keydown", (e) => {
+      const tag = e.target?.tagName;
+      const isEditable = e.target?.isContentEditable ||
+        tag === "TEXTAREA" ||
+        (tag === "INPUT" && /^(text|search)$/i.test(e.target.type || ""));
+      if (isEditable) handleKeydown(e);
+    }, true);
+
+    // input events give more accurate data on apps that fire them
+    document.addEventListener("input", (event) => {
+      const target = event.target;
+      const tag = target?.tagName;
+      const isEditable = target?.isContentEditable ||
+        tag === "TEXTAREA" ||
+        (tag === "INPUT" && /^(text|search)$/i.test(target.type || ""));
+      if (!isEditable) return;
+      recordEvent(event.inputType, event.data);
+    }, true);
+  }
+
+  // ──────── Periodic flush + WPM refresh ────────
+  setInterval(() => flushAndSend("interval"), FLUSH_INTERVAL_MS);
+  setInterval(() => updateHUDLive(), 2000); // keep WPM fresh even when idle
+
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") flushAndSend("hidden");
   });
   window.addEventListener("beforeunload", () => flushAndSend("unload"));
 
   // ──────── HUD injection ────────
-  let hudOrb = null;
-
-  function updateOrbCount(count) {
-    if (hudOrb) hudOrb.textContent = count;
-  }
-
   function injectHUD() {
-    // Avoid duplicate mounts on SPA navigations
     if (document.getElementById("tq-hud-host")) return;
 
     const host = document.createElement("div");
@@ -183,11 +250,20 @@
     `;
     document.body.appendChild(host);
 
-    // Use Shadow DOM to fully encapsulate styles from host page CSS
     const shadow = host.attachShadow({ mode: "open" });
     shadow.innerHTML = `
       <style>
         :host { all: initial; }
+        @keyframes pulse {
+          0%   { transform: scale(1); box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+          40%  { transform: scale(1.18); box-shadow: 0 0 28px rgba(245,179,66,0.6); }
+          100% { transform: scale(1); box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+        }
+        @keyframes bump {
+          0%   { opacity: 1; transform: translateY(0); }
+          30%  { opacity: 1; transform: translateY(-3px); color: #F5B342; }
+          100% { opacity: 1; transform: translateY(0); color: inherit; }
+        }
         .orb {
           pointer-events: auto;
           width: 56px; height: 56px;
@@ -195,74 +271,132 @@
           background: linear-gradient(135deg, #131A2B 0%, #1C2540 100%);
           border: 2px solid #F5B342;
           color: #F5B342;
-          font: 600 16px "Inter", system-ui, sans-serif;
+          font: 600 15px "Inter", system-ui, sans-serif;
           display: flex; align-items: center; justify-content: center;
           cursor: grab;
           box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-          transition: transform 0.2s, box-shadow 0.2s;
+          transition: box-shadow 0.2s;
           user-select: none;
         }
-        .orb:hover { transform: scale(1.05); box-shadow: 0 0 24px rgba(245,179,66,0.45); }
+        .orb.pulse { animation: pulse 0.3s cubic-bezier(0.36,0.07,0.19,0.97); }
         .panel {
           pointer-events: auto;
           position: absolute; bottom: 64px; right: 0;
-          width: 280px;
+          width: 240px;
           background: #131A2B;
           border: 1px solid #2A3556;
           border-radius: 12px;
-          padding: 16px;
+          padding: 14px 16px;
           color: #E8EBF5;
           font: 13px "Inter", system-ui, sans-serif;
-          opacity: 0; transform: translateY(8px); pointer-events: none;
-          transition: opacity 0.2s, transform 0.2s;
+          opacity: 0; transform: translateY(10px) scale(0.97);
+          pointer-events: none;
+          transition: opacity 0.2s ease, transform 0.2s ease;
         }
-        .panel.open { opacity: 1; transform: translateY(0); pointer-events: auto; }
-        .row { display: flex; justify-content: space-between; padding: 4px 0; }
-        .row .label { color: #9AA3B8; }
-        .row .value { color: #E8EBF5; font-variant-numeric: tabular-nums; font-weight: 500; }
-        .lvl { color: #F5B342; font-weight: 700; }
-        .bar { height: 4px; background: #2A3556; border-radius: 2px; margin-top: 8px; overflow: hidden; }
-        .bar-fill { height: 100%; background: linear-gradient(90deg, #6FCFEB, #F5B342); transition: width 0.4s ease-out; }
+        .panel.open {
+          opacity: 1; transform: translateY(0) scale(1);
+          pointer-events: auto;
+        }
+        .row {
+          display: flex; justify-content: space-between;
+          align-items: center; padding: 5px 0;
+          border-bottom: 1px solid #1C2540;
+        }
+        .row:last-child { border-bottom: none; }
+        .label { color: #6B7A9E; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .value {
+          color: #E8EBF5; font-variant-numeric: tabular-nums; font-weight: 600;
+          transition: color 0.2s;
+        }
+        .value.bump { animation: bump 0.35s ease-out; }
+        .lvl { color: #F5B342; }
+        .bar-wrap { margin: 8px 0 4px; }
+        .bar { height: 4px; background: #2A3556; border-radius: 2px; overflow: hidden; }
+        .bar-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #6FCFEB, #F5B342);
+          transition: width 0.6s cubic-bezier(0.4,0,0.2,1);
+          width: 0%;
+        }
+        .xp-row {
+          display: flex; justify-content: space-between;
+          font-size: 11px; color: #6B7A9E; margin-top: 2px;
+        }
       </style>
       <div class="orb" id="orb">0</div>
       <div class="panel" id="panel">
-        <div class="row"><span class="label">Level</span><span class="value lvl" id="hud-level">—</span></div>
-        <div class="row"><span class="label">XP</span><span class="value" id="hud-xp">—</span></div>
-        <div class="bar"><div class="bar-fill" id="hud-bar" style="width:0%"></div></div>
-        <div class="row" style="margin-top:8px"><span class="label">Today</span><span class="value" id="hud-today">— words</span></div>
-        <div class="row"><span class="label">WPM</span><span class="value" id="hud-wpm">—</span></div>
-        <div class="row"><span class="label">Streak</span><span class="value" id="hud-streak">—</span></div>
+        <div class="row">
+          <span class="label">Level</span>
+          <span class="value lvl" id="hud-level">—</span>
+        </div>
+        <div class="bar-wrap">
+          <div class="bar"><div class="bar-fill" id="hud-bar"></div></div>
+          <div class="xp-row">
+            <span id="hud-xp-cur">0 XP</span>
+            <span id="hud-xp-next">— to next</span>
+          </div>
+        </div>
+        <div class="row">
+          <span class="label">Today</span>
+          <span class="value" id="hud-today">0 words</span>
+        </div>
+        <div class="row">
+          <span class="label">WPM</span>
+          <span class="value" id="hud-wpm">—</span>
+        </div>
+        <div class="row">
+          <span class="label">Streak</span>
+          <span class="value" id="hud-streak">—</span>
+        </div>
       </div>
     `;
 
     const orb = shadow.getElementById("orb");
-    hudOrb = orb;
-    orb.textContent = state.sessionTotalWords;
     const panel = shadow.getElementById("panel");
+
+    hudEls = {
+      orb,
+      panel,
+      level:  shadow.getElementById("hud-level"),
+      xpCur:  shadow.getElementById("hud-xp-cur"),
+      xpNext: shadow.getElementById("hud-xp-next"),
+      bar:    shadow.getElementById("hud-bar"),
+      today:  shadow.getElementById("hud-today"),
+      wpm:    shadow.getElementById("hud-wpm"),
+      streak: shadow.getElementById("hud-streak"),
+    };
+
     orb.addEventListener("click", () => panel.classList.toggle("open"));
 
-    // Listen for stats updates from background ack
+    // Backend stats update — fills in Level / XP / Streak and refines Today
     window.addEventListener("message", (e) => {
       if (e.data?.source !== "typequest" || e.data.type !== "STATS_UPDATE") return;
       const s = e.data.stats;
+      lastKnownStats = s;
+
       orb.textContent = `L${s.level ?? 1}`;
-      shadow.getElementById("hud-level").textContent = s.level ?? "—";
-      shadow.getElementById("hud-xp").textContent =
-        `${s.xp ?? 0} / ${s.xpForNext ?? 0}`;
-      shadow.getElementById("hud-bar").style.width =
-        `${Math.min(100, ((s.xp / s.xpForNext) * 100) || 0)}%`;
-      shadow.getElementById("hud-today").textContent = `${s.wordsToday ?? 0} words`;
-      shadow.getElementById("hud-wpm").textContent = s.wpm ?? "—";
-      shadow.getElementById("hud-streak").textContent = `🔥 ${s.streak ?? 0} days`;
+      hudEls.level.textContent = s.level ?? "—";
+
+      const xp = s.xp ?? 0;
+      const xpNext = s.xpForNext ?? 50;
+      hudEls.xpCur.textContent = `${xp.toLocaleString()} XP`;
+      hudEls.xpNext.textContent = `${(xpNext - xp).toLocaleString()} to next`;
+      hudEls.bar.style.width = `${Math.min(100, (xp / xpNext) * 100)}%`;
+
+      hudEls.streak.textContent = s.streak > 0 ? `🔥 ${s.streak} days` : "—";
+
+      // Merge backend wordsToday with local session so Today keeps going up
+      updateHUDLive();
     });
 
-    // Make orb draggable
     makeDraggable(host, orb);
+
+    // Initial live render
+    updateHUDLive();
   }
 
   function makeDraggable(target, handle) {
-    let dragging = false;
-    let startX, startY, startRight, startBottom;
+    let dragging = false, startX, startY, startRight, startBottom;
     handle.addEventListener("mousedown", (e) => {
       dragging = true;
       startX = e.clientX; startY = e.clientY;
@@ -274,19 +408,15 @@
     });
     document.addEventListener("mousemove", (e) => {
       if (!dragging) return;
-      target.style.right = `${Math.max(8, startRight - (e.clientX - startX))}px`;
+      target.style.right  = `${Math.max(8, startRight  - (e.clientX - startX))}px`;
       target.style.bottom = `${Math.max(8, startBottom - (e.clientY - startY))}px`;
     });
     document.addEventListener("mouseup", () => {
-      if (dragging) {
-        dragging = false;
-        handle.style.cursor = "grab";
-      }
+      if (dragging) { dragging = false; handle.style.cursor = "grab"; }
     });
   }
 
   // ──────── Bootstrap ────────
   attachListener();
-  // Wait a moment for SPA editors to mount before injecting HUD
   setTimeout(injectHUD, 1500);
 })();
