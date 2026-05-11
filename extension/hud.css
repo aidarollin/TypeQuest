@@ -1,0 +1,4 @@
+/* extension/hud.css
+   HUD styles are injected inline via Shadow DOM in content.js to avoid CSP
+   conflicts with host pages. This file is a web-accessible resource stub.
+*/
