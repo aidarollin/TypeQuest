@@ -49,6 +49,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     api.clearToken().then(() => sendResponse({ ok: true }));
     return true;
   }
+
+  if (msg.type === "SET_TOKEN") {
+    api.setToken(msg.token)
+      .then(() => api.getOverview())
+      .then((stats) => {
+        lastStats = stats;
+        sendResponse({ ok: true });
+      })
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
 });
 
 async function handleTypingEvent(event) {

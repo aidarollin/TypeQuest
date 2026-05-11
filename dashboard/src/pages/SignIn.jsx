@@ -9,6 +9,15 @@ export default function SignIn() {
   const handleSuccess = async (cred) => {
     try {
       await signIn(cred.credential);
+
+      // If opened from the extension popup, send the JWT token back to it
+      const params = new URLSearchParams(window.location.search);
+      const extId = params.get("extid");
+      if (extId && window.chrome?.runtime?.sendMessage) {
+        const token = localStorage.getItem("tq_token");
+        window.chrome.runtime.sendMessage(extId, { type: "SET_TOKEN", token });
+      }
+
       navigate("/");
     } catch (err) {
       console.error("Sign-in failed:", err);

@@ -32,7 +32,8 @@
     sessionStartedAt: null,
     recentEvents: [],
     partialWordBuffer: "",
-    clientEventCounter: 0
+    clientEventCounter: 0,
+    sessionTotalWords: 0   // cumulative across flushes for local orb display
   };
 
   function recordEvent(inputType, data) {
@@ -52,8 +53,10 @@
       const completed = (state.partialWordBuffer.match(/\S+\s+/g) || []).length;
       if (completed > 0) {
         state.deltaWords += completed;
+        state.sessionTotalWords += completed;
         const lastSpace = state.partialWordBuffer.lastIndexOf(" ");
         state.partialWordBuffer = state.partialWordBuffer.slice(lastSpace + 1);
+        updateOrbCount(state.sessionTotalWords);
       }
       state.recentEvents.push({ ts: now, charCount: text.length });
     } else if (
@@ -151,6 +154,12 @@
   window.addEventListener("beforeunload", () => flushAndSend("unload"));
 
   // ──────── HUD injection ────────
+  let hudOrb = null;
+
+  function updateOrbCount(count) {
+    if (hudOrb) hudOrb.textContent = count;
+  }
+
   function injectHUD() {
     // Avoid duplicate mounts on SPA navigations
     if (document.getElementById("tq-hud-host")) return;
@@ -204,7 +213,7 @@
         .bar { height: 4px; background: #2A3556; border-radius: 2px; margin-top: 8px; overflow: hidden; }
         .bar-fill { height: 100%; background: linear-gradient(90deg, #6FCFEB, #F5B342); transition: width 0.4s ease-out; }
       </style>
-      <div class="orb" id="orb">12</div>
+      <div class="orb" id="orb">0</div>
       <div class="panel" id="panel">
         <div class="row"><span class="label">Level</span><span class="value lvl" id="hud-level">—</span></div>
         <div class="row"><span class="label">XP</span><span class="value" id="hud-xp">—</span></div>
@@ -216,6 +225,8 @@
     `;
 
     const orb = shadow.getElementById("orb");
+    hudOrb = orb;
+    orb.textContent = state.sessionTotalWords;
     const panel = shadow.getElementById("panel");
     orb.addEventListener("click", () => panel.classList.toggle("open"));
 
@@ -223,7 +234,7 @@
     window.addEventListener("message", (e) => {
       if (e.data?.source !== "typequest" || e.data.type !== "STATS_UPDATE") return;
       const s = e.data.stats;
-      orb.textContent = s.level ?? "—";
+      orb.textContent = `L${s.level ?? 1}`;
       shadow.getElementById("hud-level").textContent = s.level ?? "—";
       shadow.getElementById("hud-xp").textContent =
         `${s.xp ?? 0} / ${s.xpForNext ?? 0}`;
