@@ -2,224 +2,167 @@
 
 > Level up every word you type. Earn XP, unlock badges, and watch your writing habit grow.
 
-TypeQuest is a gamification layer for writing tools. It tracks your words, speed, and streaks across Google Docs, Microsoft Word, and Notion — then rewards you with XP, levels, and 40+ badges shown on a personal analytics dashboard.
+TypeQuest sits on top of Google Docs, Microsoft Word, and Notion and turns writing into an RPG. Every word earns XP. Hit milestones, level up, collect 40+ badges, and track your progress on a personal analytics dashboard.
 
-**Privacy-first:** only counts are tracked, never document content.
-
----
-
-## What's in This Repo
-
-| Folder | What it does |
-|---|---|
-| `backend/` | Node.js + Express REST API, MongoDB, JWT auth |
-| `dashboard/` | React analytics dashboard (Vite) |
-| `extension/` | Chrome extension (Manifest V3) — the primary tracking client |
-| `google-docs-addon/` | Google Apps Script sidebar add-on (alternative to extension) |
-| `word-addin/` | Microsoft Office.js task-pane add-in |
+**Privacy-first:** only word counts and timing are tracked — document content is never read or stored.
 
 ---
 
-## Prerequisites
+## What you need
 
-- [Node.js 20+](https://nodejs.org/)
-- A [MongoDB Atlas](https://www.mongodb.com/atlas) account (free tier is enough) **or** MongoDB running locally
-- A [Google Cloud](https://console.cloud.google.com/) project with OAuth 2.0 credentials
-- Google Chrome (or any Chromium browser)
+- [Node.js 20+](https://nodejs.org/) — download and install, no account needed
+- [Google Chrome](https://www.google.com/chrome/) — to run the extension
+- A **Google account** — used to sign in (no Google Cloud setup required to *try* it; see Step 3 if you want to run your own instance)
+
+> **No MongoDB account needed.** If you have [Docker](https://www.docker.com/products/docker-desktop/) installed, one command starts a local database. No Docker? Use [MongoDB Atlas free tier](https://www.mongodb.com/atlas) — takes 2 minutes.
 
 ---
 
-## Quick Start
+## Setup (5 minutes)
+
+### 1 — Clone and install
 
 ```bash
 git clone https://github.com/your-username/typequest.git
 cd typequest
+npm install       # installs the dev toolchain
+npm run setup     # installs backend + dashboard dependencies
 ```
 
-You'll run three things in separate terminals: the backend API, the dashboard, and the Chrome extension.
+### 2 — Start a database
 
----
+**Option A — Docker (no account needed):**
+```bash
+docker compose up -d
+```
+That's it. MongoDB is running on `localhost:27017`.
 
-## 1 — Backend API
+**Option B — MongoDB Atlas (free):**
+1. Sign up at [mongodb.com/atlas](https://www.mongodb.com/atlas) — free tier, no credit card
+2. Create a cluster → **Connect → Drivers** → copy the connection string
+3. Replace `<password>` in the string and paste it into `backend/.env` as `MONGODB_URI`
+
+### 3 — Configure environment
 
 ```bash
-cd backend
-npm install
-cp .env.example .env
+cp backend/.env.example backend/.env
+cp dashboard/.env.example dashboard/.env.local
 ```
 
-Open `.env` and fill in the four required values:
+Open `backend/.env` and fill in the two Google OAuth values.  
+Open `dashboard/.env.local` and fill in the same Client ID.
 
+**Getting Google OAuth credentials (one-time, ~3 minutes):**
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com/) and sign in
+2. Click **Select a project → New project** → give it any name → **Create**
+3. In the left menu: **APIs & Services → Credentials**
+4. Click **+ Create Credentials → OAuth client ID**
+5. If prompted, click **Configure consent screen** → External → fill in App name → Save
+6. Back in Credentials: Application type = **Web application**
+7. Under **Authorized JavaScript origins**, click **+ Add URI** → type `http://localhost:5173`
+8. Click **Create** — copy the **Client ID** and **Client Secret**
+
+Paste them into `backend/.env`:
 ```env
-MONGODB_URI=mongodb+srv://<user>:<password>@cluster.mongodb.net/typequest
-JWT_SECRET=<run: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))">
-GOOGLE_CLIENT_ID=<your-client-id>.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=<your-client-secret>
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
 ```
-
-Seed the badge definitions (one-time):
-
-```bash
-npm run seed:badges
-```
-
-Start the server:
-
-```bash
-npm run dev
-```
-
-Verify it's running:
-
-```
-GET http://localhost:4000/api/health  →  { "status": "ok" }
-```
-
----
-
-## 2 — Dashboard
-
-```bash
-cd dashboard
-npm install
-cp .env.example .env.local
-```
-
-Fill in `.env.local`:
-
+And into `dashboard/.env.local`:
 ```env
-VITE_GOOGLE_CLIENT_ID=<same-client-id>.apps.googleusercontent.com
+VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 ```
 
-> `VITE_API_URL` can be left out — Vite proxies `/api` to `localhost:4000` automatically.
-
-Start the dashboard:
+### 4 — Start everything
 
 ```bash
-npm run dev
+npm run seed   # load the 40 badges into the database (run once)
+npm run dev    # starts the API on :4000 and dashboard on :5173
 ```
 
-Open [http://localhost:5173](http://localhost:5173). You'll see the sign-in screen.
+Open [http://localhost:5173](http://localhost:5173) — you should see the TypeQuest sign-in screen.
 
 ---
 
-## 3 — Google OAuth Setup
+## Load the Chrome Extension
 
-If you haven't set up OAuth credentials yet:
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services → Credentials**
-2. Click **Create Credentials → OAuth client ID**
-3. Application type: **Web application**
-4. Add to **Authorized JavaScript origins**:
+1. Open **chrome://extensions/** in Chrome
+2. Toggle **Developer mode** on (top-right)
+3. Click **Load unpacked** → select the `extension/` folder
+4. Note the Extension ID shown on the card (e.g. `abcde...`)
+5. Add it to `backend/.env`:
+   ```env
+   CORS_ORIGINS=http://localhost:5173,chrome-extension://YOUR_EXTENSION_ID
    ```
-   http://localhost:5173
-   ```
-5. Add to **Authorized redirect URIs**:
-   ```
-   http://localhost:5173
-   ```
-6. Copy the **Client ID** and **Client Secret** into `backend/.env` and `dashboard/.env.local`
+6. Restart the backend: stop with `Ctrl+C`, then `npm run dev` again
 
----
-
-## 4 — Chrome Extension
-
-### Load it
-
-1. Open `chrome://extensions/` in Chrome
-2. Toggle **Developer mode** on (top-right switch)
-3. Click **Load unpacked**
-4. Select the `extension/` folder from this repo
-5. The TypeQuest icon appears in your toolbar
-
-### Add the extension ID to the backend
-
-After loading, Chrome assigns your extension an ID (shown on the extensions page, e.g. `abcdefghijklmnopqrstuvwxyz123456`).
-
-Add it to `backend/.env`:
-
-```env
-CORS_ORIGINS=http://localhost:5173,chrome-extension://YOUR_EXTENSION_ID
-```
-
-Restart the backend after saving.
-
-### Sign in
+### Sign in to the extension
 
 1. Click the **TypeQuest icon** in the Chrome toolbar
-2. Click **Sign in** — the dashboard sign-in page opens in a new tab
-3. Sign in with Google
-4. Close that tab and click the toolbar icon again — your stats will appear
+2. Click **Sign in** — the dashboard login page opens
+3. Sign in with Google, then close that tab
+4. Click the toolbar icon again — your stats appear
 
 ### Start tracking
 
-Open any [Google Doc](https://docs.google.com), start typing. The gold orb appears in the bottom-right corner and counts words live. Click it to expand the stats panel.
-
-Words flush to the backend every 30 seconds (or every 50 words). After the first flush, Level, XP, and Streak populate in the panel.
+Open any [Google Doc](https://docs.google.com), start typing.  
+A gold orb appears in the bottom-right. Click it to see Level, XP, WPM, and streak — updating live as you type.
 
 ---
 
-## 5 — Google Docs Add-on (optional)
+## Optional: Google Docs Sidebar Add-on
 
-The add-on is an alternative to the extension for users who prefer a sidebar inside Google Docs. It requires a publicly reachable backend URL (the extension works with localhost).
+An alternative to the extension — shows a sidebar inside Google Docs. Requires a public backend URL (the extension works on localhost; the add-on doesn't).
+
+Once your backend is deployed (see below):
 
 1. Go to [script.google.com](https://script.google.com) → **New project**, name it `TypeQuest`
-2. Paste `google-docs-addon/Code.gs` into the default `Code.gs` file
-3. **File → New → HTML file** → name it `Sidebar` → paste `google-docs-addon/Sidebar.html`
-4. Open **Project Settings → Show "appsscript.json"** → replace its contents with `google-docs-addon/appsscript.json`
-5. In `Code.gs`, set `API_BASE` to your deployed backend URL (see [Deployment](#deployment))
-6. **Deploy → Test deployments → Google Workspace add-on → Install**
-7. Open any Google Doc → **Extensions → TypeQuest → Open sidebar**
+2. Paste `google-docs-addon/Code.gs` into `Code.gs`; set `API_BASE` to your deployed URL
+3. **File → New → HTML** → name it `Sidebar` → paste `google-docs-addon/Sidebar.html`
+4. **Project Settings → Show appsscript.json** → replace with `google-docs-addon/appsscript.json`
+5. **Deploy → Test deployments → Google Workspace add-on → Install**
+6. Open a Google Doc → **Extensions → TypeQuest → Open sidebar**
 
 ---
 
-## 6 — Word Add-in (optional)
-
-Requires Node.js and a Microsoft 365 account.
+## Optional: Microsoft Word Add-in
 
 ```bash
 cd word-addin
 npm install
-npx office-addin-dev-certs install   # one-time: installs a local HTTPS cert
-npm run dev                           # starts at https://localhost:3000
+npx office-addin-dev-certs install   # installs a local dev HTTPS cert (one-time)
+npm run dev
 ```
 
-Sideload into Word desktop:
-
-1. **Insert → Add-ins → My Add-ins → Upload My Add-in**
-2. Select `word-addin/manifest.xml`
-
-The TypeQuest task pane opens in the Word sidebar.
+In Word desktop: **Insert → Add-ins → My Add-ins → Upload My Add-in** → select `word-addin/manifest.xml`.
 
 ---
 
-## Deployment
+## Deploying your own instance
 
-For others to use your instance you need the backend and dashboard deployed publicly.
+### Backend
 
-### Backend (Railway / Render / Fly.io)
+Deploy to [Railway](https://railway.app/), [Render](https://render.com/), or [Fly.io](https://fly.io/) — all have free tiers.  
+Set the same environment variables from `backend/.env.example`.  
+Start command: `npm start`
 
-Any Node.js host works. Set all environment variables from `.env.example`. The `npm start` command runs `node server.js`.
-
-### Dashboard (Vercel)
-
-```bash
-cd dashboard
-npx vercel --prod
-```
-
-Set `VITE_API_URL` and `VITE_GOOGLE_CLIENT_ID` in the Vercel project settings.
-
-After deploying, update your Google OAuth credentials to include the production URLs in **Authorized JavaScript origins** and **Authorized redirect URIs**.
-
-### Chrome Extension (Chrome Web Store)
+### Dashboard
 
 ```bash
-cd extension
-zip -r typequest-extension.zip . --exclude "*.DS_Store"
+npx vercel --prefix dashboard --prod
 ```
+Add `VITE_API_URL` (your deployed backend URL) and `VITE_GOOGLE_CLIENT_ID` in the Vercel project settings.
 
-Upload the zip at the [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole). After approval, update `CORS_ORIGINS` in your backend with the permanent production extension ID.
+After deploying, add your production URLs to Google OAuth:  
+**Cloud Console → APIs & Services → Credentials → your OAuth client → Edit** → add the production domain to Authorized JavaScript Origins.
+
+### Chrome Extension (publish to Web Store)
+
+```bash
+cd extension && zip -r typequest.zip . --exclude "*.DS_Store"
+```
+Upload at [chrome.google.com/webstore/devconsole](https://chrome.google.com/webstore/devconsole).  
+After approval, update `CORS_ORIGINS` in your backend with the permanent extension ID.
 
 ---
 
@@ -227,22 +170,22 @@ Upload the zip at the [Chrome Web Store Developer Dashboard](https://chrome.goog
 
 | Problem | Fix |
 |---|---|
-| Extension popup stuck on "Sign in" | Add the extension ID to `CORS_ORIGINS` in `backend/.env` and restart |
-| Orb appears but word count stays 0 | Reload the extension, then open a **new** Google Docs tab |
-| Dashboard shows empty charts | Run `npm run seed:badges` in `backend/`, then sign out and back in |
-| MongoDB connection refused | Whitelist your IP in Atlas: **Network Access → Add IP → Allow from anywhere** |
-| Apps Script returns 403 | Check `oauthScopes` in `appsscript.json` and redeploy |
-| Word add-in won't load | Run `npx office-addin-dev-certs install` and trust the cert in Windows |
+| Extension stuck on "Sign in" | Add the extension ID to `CORS_ORIGINS` and restart the backend |
+| Orb appears but count stays at 0 | Reload the extension at `chrome://extensions/`, then open a **new** Google Docs tab |
+| Sign-in fails with redirect_uri_mismatch | Add `http://localhost:5173` to Authorized JavaScript Origins in Google Cloud |
+| Dashboard shows no data | Make sure `npm run seed` ran successfully |
+| MongoDB connection error | Docker: run `docker compose up -d`. Atlas: whitelist your IP under **Network Access** |
+| Word add-in won't load | Run `npx office-addin-dev-certs install` and trust the certificate |
 
 ---
 
-## Tech Stack
+## Tech stack
 
 | Layer | Technology |
 |---|---|
 | Tracking | Chrome Extension (MV3), Google Apps Script, Office.js |
 | Backend | Node.js 20, Express 4, Mongoose, JWT |
-| Database | MongoDB 7 / Atlas |
+| Database | MongoDB 7 |
 | Dashboard | React 18, Vite, TanStack Query v5, Recharts |
 | Auth | Google OAuth 2.0 |
 

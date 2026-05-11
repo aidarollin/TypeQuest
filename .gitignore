@@ -9,6 +9,9 @@ node_modules/
 .pnp
 .pnp.js
 
+# Root-level lock file (concurrently only)
+package-lock.json
+
 # Build output
 dist/
 build/

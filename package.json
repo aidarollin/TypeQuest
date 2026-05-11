@@ -1,0 +1,16 @@
+{
+  "name": "typequest",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "setup": "npm install --prefix backend && npm install --prefix dashboard",
+    "seed": "npm run seed:badges --prefix backend",
+    "dev": "concurrently --names \"API,WEB\" -c \"cyan.bold,magenta.bold\" \"npm run dev --prefix backend\" \"npm run dev --prefix dashboard\"",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:dashboard": "npm run dev --prefix dashboard",
+    "build": "npm run build --prefix dashboard"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
