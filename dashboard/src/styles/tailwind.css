@@ -1,0 +1,9 @@
+/* Tailwind CSS directives (opt-in).
+   To enable: add tailwindcss and autoprefixer to devDependencies,
+   create postcss.config.js, and import this file in main.jsx.
+   The dashboard uses globals.css CSS variables without Tailwind by default.
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+*/

@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    :root {
+      --tq-bg:      #0B0F19;
+      --tq-surface: #131A2B;
+      --tq-border:  #2A3556;
+      --tq-text:    #E8EBF5;
+      --tq-dim:     #9AA3B8;
+      --tq-muted:   #5C6584;
+      --tq-accent:  #F5B342;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 16px;
+      background: var(--tq-bg); color: var(--tq-text);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 13px; line-height: 1.5;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+    .brand-mark {
+      width: 32px; height: 32px; border-radius: 8px;
+      background: linear-gradient(135deg, #F5B342, #FF8E3C);
+      color: #0B0F19; display: grid; place-items: center;
+      font-weight: 700; font-size: 13px;
+    }
+    .brand-name { font-weight: 600; font-size: 15px; }
+
+    .stat-row { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--tq-border); }
+    .stat-row:last-of-type { border-bottom: none; }
+    .stat-label { color: var(--tq-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; }
+    .stat-value { font-weight: 600; font-family: monospace; color: var(--tq-text); }
+    .stat-accent { color: var(--tq-accent); }
+
+    .section { background: var(--tq-surface); border: 1px solid var(--tq-border); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+    .section-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--tq-muted); margin-bottom: 10px; }
+
+    .xpbar-track { height: 6px; background: #1C2540; border-radius: 999px; overflow: hidden; margin-top: 8px; }
+    .xpbar-fill { height: 100%; background: linear-gradient(90deg, #6FCFEB, #F5B342); border-radius: 999px; }
+
+    .badge-strip { display: flex; gap: 6px; flex-wrap: wrap; }
+    .badge-item { font-size: 22px; }
+
+    .signin-section { text-align: center; }
+    .signin-label { color: var(--tq-dim); margin-bottom: 10px; }
+    textarea {
+      width: 100%; background: #1C2540; border: 1px solid var(--tq-border);
+      border-radius: 6px; color: var(--tq-text); font-size: 11px;
+      font-family: monospace; padding: 8px; resize: vertical; min-height: 60px;
+    }
+
+    button {
+      width: 100%; padding: 9px; border-radius: 6px; border: none;
+      font-weight: 600; font-size: 13px; cursor: pointer; margin-top: 8px;
+    }
+    .btn-primary { background: var(--tq-accent); color: #0B0F19; }
+    .btn-ghost { background: transparent; color: var(--tq-dim); border: 1px solid var(--tq-border); }
+
+    #status { font-size: 11px; color: var(--tq-muted); margin-top: 6px; min-height: 16px; }
+    .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #5FE3A1; margin-right: 6px; }
+  </style>
+</head>
+<body>
+
+<div class="brand">
+  <div class="brand-mark">TQ</div>
+  <div class="brand-name">TypeQuest</div>
+</div>
+
+<!-- Signed-in view -->
+<div id="signed-in" style="display:none">
+  <div class="section">
+    <div class="section-title">Progress</div>
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;">
+      <div style="font-size:32px; font-weight:700; color:var(--tq-accent)" id="level-num">—</div>
+      <div>
+        <div style="font-weight:600" id="level-title">—</div>
+        <div style="font-size:11px; color:var(--tq-muted)" id="xp-label">0 / 0 XP</div>
+      </div>
+    </div>
+    <div class="xpbar-track"><div class="xpbar-fill" id="xp-fill" style="width:0%"></div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Today</div>
+    <div class="stat-row">
+      <span class="stat-label">Words</span>
+      <span class="stat-value stat-accent" id="words-today">0</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Streak</span>
+      <span class="stat-value" id="streak">🔥 0 days</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Total words</span>
+      <span class="stat-value" id="total-words">0</span>
+    </div>
+  </div>
+
+  <div class="section" id="badges-section" style="display:none">
+    <div class="section-title">Recent badges</div>
+    <div class="badge-strip" id="badge-strip"></div>
+  </div>
+
+  <div style="text-align:center; margin-top:4px;">
+    <span class="dot"></span>
+    <span style="font-size:11px; color:var(--tq-muted)">Tracking active</span>
+  </div>
+  <button class="btn-ghost" onclick="signOut()" style="margin-top:12px">Sign out</button>
+</div>
+
+<!-- Signed-out view -->
+<div id="signed-out">
+  <div class="section signin-section">
+    <div style="font-size:28px; margin-bottom:8px;">✍️</div>
+    <div style="font-weight:600; margin-bottom:6px;">Connect TypeQuest</div>
+    <div class="signin-label">Paste your Personal Access Token from the TypeQuest dashboard → Settings.</div>
+    <textarea id="pat-input" placeholder="tq_eyJ…"></textarea>
+    <button class="btn-primary" onclick="submitPAT()">Connect</button>
+    <div id="status"></div>
+  </div>
+</div>
+
+<script>
+  var state = <?= JSON.stringify(state) ?>;
+
+  function fmt(n) {
+    if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n/1e3).toFixed(1) + 'k';
+    return (n || 0).toLocaleString();
+  }
+
+  function render() {
+    if (state.signedIn) {
+      document.getElementById('signed-in').style.display = '';
+      document.getElementById('signed-out').style.display = 'none';
+      document.getElementById('level-num').textContent = state.level || '—';
+      document.getElementById('level-title').textContent = state.title || '';
+      var pct = state.levelProgressPct || 0;
+      document.getElementById('xp-fill').style.width = pct + '%';
+      document.getElementById('xp-label').textContent = fmt(state.xp) + ' / ' + fmt(state.xpForNext) + ' XP';
+      document.getElementById('words-today').textContent = fmt(state.wordsToday);
+      document.getElementById('streak').textContent = '🔥 ' + (state.streak || 0) + ' days';
+      document.getElementById('total-words').textContent = fmt(state.totalWords);
+
+      var badges = state.recentBadges || [];
+      if (badges.length) {
+        document.getElementById('badges-section').style.display = '';
+        document.getElementById('badge-strip').innerHTML = badges.map(function(b) {
+          return '<span class="badge-item" title="' + b.name + '">' + b.icon + '</span>';
+        }).join('');
+      }
+    } else {
+      document.getElementById('signed-in').style.display = 'none';
+      document.getElementById('signed-out').style.display = '';
+    }
+  }
+
+  function setStatus(msg) {
+    document.getElementById('status').textContent = msg;
+  }
+
+  function submitPAT() {
+    var token = document.getElementById('pat-input').value.trim();
+    if (!token.startsWith('tq_')) { setStatus('Token must start with tq_'); return; }
+    setStatus('Connecting…');
+    google.script.run
+      .withSuccessHandler(function(ok) {
+        if (ok) { setStatus(''); state.signedIn = true; render(); }
+        else setStatus('Invalid token. Check and try again.');
+      })
+      .withFailureHandler(function(e) { setStatus('Error: ' + e.message); })
+      .signInWithToken(token);
+  }
+
+  function signOut() {
+    google.script.run
+      .withSuccessHandler(function() { state.signedIn = false; render(); })
+      .signOut();
+  }
+
+  render();
+</script>
+</body>
+</html>
