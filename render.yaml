@@ -3,10 +3,7 @@ services:
     name: typequest
     runtime: node
     # Build: compile the dashboard first, then install backend deps
-    buildCommand: >
-      npm install --prefix dashboard &&
-      npm run build --prefix dashboard &&
-      npm install --prefix backend
+    buildCommand: cd dashboard && npm install && npm run build && cd ../backend && npm install
     startCommand: node backend/server.js
     envVars:
       - key: NODE_ENV
